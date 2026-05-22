@@ -45,13 +45,33 @@ Once handshaking as a Consumer, the client requests a stream of records starting
 
 The single binary supports four distinct operational modes via command-line arguments.
 
-> [!TIP]
-> Since this is a high-performance infrastructure project, always compile with the `--release` flag in production environments to enable maximum compiler optimizations for `io_uring` memory layouts:
-> ```bash
-> cargo run --release -- [subcommand]
-> ```
+### 📦 Compiling and Running the Release Binary (Recommended)
+To build the highly-optimized release binary:
+```bash
+cargo build --release
+```
+This produces a standalone executable at `./target/release/ringlog`. You can copy this binary and run it anywhere on a compatible Linux environment:
+```bash
+# To run the self-contained simulation demo:
+./target/release/ringlog
 
-### 1. Run the Real-Time Simulation Demo (Recommended)
+# To run the standalone broker server:
+./target/release/ringlog server
+
+# To run the interactive producer client:
+./target/release/ringlog producer
+
+# To run the real-time consumer client starting from physical offset 0:
+./target/release/ringlog consumer 0
+```
+
+---
+
+### 🛠️ Running with Cargo (Development)
+
+For quick development and testing, you can use cargo to compile and run:
+
+### 1. Run the Real-Time Simulation Demo
 This runs a fully self-contained simulation of the broker, producer, and consumer all running concurrently inside the same thread-local event loop:
 
 ```bash
