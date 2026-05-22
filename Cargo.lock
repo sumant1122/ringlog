@@ -117,15 +117,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prodcon"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "tokio",
- "tokio-uring",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -141,6 +132,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
  "bitflags 2.11.1",
+]
+
+[[package]]
+name = "ringlog"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "tokio",
+ "tokio-uring",
 ]
 
 [[package]]
