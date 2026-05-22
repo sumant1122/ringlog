@@ -388,7 +388,7 @@ fn main() -> io::Result<()> {
     if args.len() > 1 && args[1] == "server" {
         // Mode 1: Dedicated Broker Server
         println!("============================================================");
-        println!("              PRODCON BROKER DEDICATED SERVER               ");
+        println!("              RINGLOG BROKER DEDICATED SERVER               ");
         println!("============================================================");
         println!("[Server] Starting single-threaded io_uring broker on 127.0.0.1:12000...\n");
         
@@ -416,7 +416,7 @@ fn main() -> io::Result<()> {
     } else if args.len() > 1 && args[1] == "producer" {
         // Mode 2: Interactive CLI Producer Client
         println!("============================================================");
-        println!("                  PRODCON TCP PRODUCER                      ");
+        println!("                  RINGLOG TCP PRODUCER                      ");
         println!("============================================================");
         println!("[Producer] Connecting to broker at 127.0.0.1:12000...\n");
         
@@ -465,7 +465,7 @@ fn main() -> io::Result<()> {
         };
         
         println!("============================================================");
-        println!("                  PRODCON TCP CONSUMER                      ");
+        println!("                  RINGLOG TCP CONSUMER                      ");
         println!("============================================================");
         println!("[Consumer] Connecting to broker at 127.0.0.1:12000 starting at offset {}...\n", start_offset);
         
@@ -507,7 +507,7 @@ fn main() -> io::Result<()> {
     } else {
         // Mode 4: Runs standard integration demo
         println!("============================================================");
-        println!("        HIGH-PERFORMANCE IO_URING KAFKA-LIKE BROKER         ");
+        println!("             RINGLOG: HIGH-PERFORMANCE BROKER              ");
         println!("============================================================");
         println!("Starting real-time integration demo on a single thread-local event loop...\n");
         tokio_uring::start(async {

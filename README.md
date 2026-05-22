@@ -1,4 +1,4 @@
-# Prodcon: Thread-Per-Core io_uring Message Broker in Rust
+# RingLog: Thread-Per-Core io_uring Message Broker in Rust
 
 A highly-optimized, single-node, mini-Kafka broker built from scratch in Rust. This system leverages a **thread-per-core** architecture powered by `io_uring` via the `tokio-uring` framework, bypassing traditional OS thread context switches and synchronization overhead.
 
