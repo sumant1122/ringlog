@@ -1,11 +1,11 @@
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::{Mutex, watch};
 use tokio::io::AsyncBufReadExt;
+use tokio::sync::{watch, Mutex};
+use tokio_uring::buf::IoBuf;
 use tokio_uring::fs::{File, OpenOptions};
 use tokio_uring::net::{TcpListener, TcpStream};
-use tokio_uring::buf::IoBuf;
 
 /// High-performance Commit Log utilizing io_uring for all disk operations.
 pub struct UringCommitLog {
@@ -17,11 +17,9 @@ impl UringCommitLog {
     /// Opens or creates the Write-Ahead Log at the specified path.
     pub async fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let path = path.as_ref().to_path_buf();
-        
+
         // Recover the write offset by checking the file size.
-        let write_offset = std::fs::metadata(&path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let write_offset = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
         let file = OpenOptions::new()
             .read(true)
@@ -37,7 +35,7 @@ impl UringCommitLog {
     /// Format on disk: [4-byte big-endian length] [payload]
     pub async fn append(&mut self, message: Vec<u8>) -> io::Result<u64> {
         let msg_len = message.len() as u32;
-        
+
         // Allocate a single contiguous buffer to minimize SQE submissions
         let mut buf = Vec::with_capacity(4 + message.len());
         buf.extend_from_slice(&msg_len.to_be_bytes());
@@ -161,7 +159,8 @@ async fn handle_connection(
                     }
                     Err(e) => return Err(e),
                 };
-                let msg_len = u32::from_be_bytes([len_buf[0], len_buf[1], len_buf[2], len_buf[3]]) as usize;
+                let msg_len =
+                    u32::from_be_bytes([len_buf[0], len_buf[1], len_buf[2], len_buf[3]]) as usize;
 
                 // Read msg_len bytes payload
                 let payload_buf = vec![0u8; msg_len];
@@ -184,16 +183,25 @@ async fn handle_connection(
         0x02 => {
             // Consumer Connection
             println!("[Server] Consumer client connected");
-            
+
             // Read 8-byte starting offset
             let offset_buf = vec![0u8; 8];
             let offset_buf = read_exact(&stream, offset_buf, 8).await?;
             let mut consumer_offset = u64::from_be_bytes([
-                offset_buf[0], offset_buf[1], offset_buf[2], offset_buf[3],
-                offset_buf[4], offset_buf[5], offset_buf[6], offset_buf[7],
+                offset_buf[0],
+                offset_buf[1],
+                offset_buf[2],
+                offset_buf[3],
+                offset_buf[4],
+                offset_buf[5],
+                offset_buf[6],
+                offset_buf[7],
             ]);
 
-            println!("[Server] Consumer streaming starting at offset {}", consumer_offset);
+            println!(
+                "[Server] Consumer streaming starting at offset {}",
+                consumer_offset
+            );
 
             let mut rx = waker_rx.clone();
             loop {
@@ -245,22 +253,25 @@ async fn handle_connection(
 async fn run_demo() -> io::Result<()> {
     let port = 12000;
     let addr = format!("127.0.0.1:{}", port);
-    
+
     // Create/clear the commit log file for the demo
     let log_path = "demo_commit.log";
     let _ = std::fs::remove_file(log_path); // start fresh
-    
+
     println!("[Demo] Initializing UringCommitLog at '{}'...", log_path);
     let log = Arc::new(Mutex::new(UringCommitLog::open(log_path).await?));
-    
+
     // Setup the notify watch channel with the initial file size (0)
     let (tx, rx) = watch::channel(0u64);
-    
+
     // Start the TCP server in the background
     let server_addr: std::net::SocketAddr = addr.parse().unwrap();
     let listener = TcpListener::bind(server_addr)?;
-    println!("[Demo] Broker Server listening on {} using io_uring...", addr);
-    
+    println!(
+        "[Demo] Broker Server listening on {} using io_uring...",
+        addr
+    );
+
     let server_log = Arc::clone(&log);
     let server_tx = tx.clone();
     let server_rx = rx.clone();
@@ -272,7 +283,9 @@ async fn run_demo() -> io::Result<()> {
                     let tx_clone = server_tx.clone();
                     let rx_clone = server_rx.clone();
                     tokio_uring::spawn(async move {
-                        if let Err(e) = handle_connection(stream, log_clone, tx_clone, rx_clone).await {
+                        if let Err(e) =
+                            handle_connection(stream, log_clone, tx_clone, rx_clone).await
+                        {
                             eprintln!("[Server Error] Connection handling error: {:?}", e);
                         }
                     });
@@ -292,15 +305,19 @@ async fn run_demo() -> io::Result<()> {
     let consumer_addr = server_addr;
     tokio_uring::spawn(async move {
         println!("[Consumer Client] Connecting to broker...");
-        let stream = TcpStream::connect(consumer_addr).await.expect("Consumer client failed to connect");
-        
+        let stream = TcpStream::connect(consumer_addr)
+            .await
+            .expect("Consumer client failed to connect");
+
         // 1. Handshake as Consumer (0x02)
         let handshake = vec![0x02];
         let _ = write_all(&stream, handshake).await.unwrap();
-        
+
         // 2. Send 8-byte starting offset (0)
         let start_offset: u64 = 0;
-        let _ = write_all(&stream, start_offset.to_be_bytes().to_vec()).await.unwrap();
+        let _ = write_all(&stream, start_offset.to_be_bytes().to_vec())
+            .await
+            .unwrap();
         println!("[Consumer Client] Requested stream starting from offset 0");
 
         // 3. Receive stream of messages
@@ -318,13 +335,17 @@ async fn run_demo() -> io::Result<()> {
                     break;
                 }
             };
-            let msg_len = u32::from_be_bytes([len_buf[0], len_buf[1], len_buf[2], len_buf[3]]) as usize;
-            
+            let msg_len =
+                u32::from_be_bytes([len_buf[0], len_buf[1], len_buf[2], len_buf[3]]) as usize;
+
             // Read msg_len bytes payload
             let payload_buf = vec![0u8; msg_len];
             let payload = read_exact(&stream, payload_buf, msg_len).await.unwrap();
             let msg_str = String::from_utf8_lossy(&payload);
-            println!("\x1b[32m[Consumer Client] Received Message: '{}'\x1b[0m", msg_str);
+            println!(
+                "\x1b[32m[Consumer Client] Received Message: '{}'\x1b[0m",
+                msg_str
+            );
         }
     });
 
@@ -332,8 +353,10 @@ async fn run_demo() -> io::Result<()> {
     let producer_addr = server_addr;
     tokio_uring::spawn(async move {
         println!("[Producer Client] Connecting to broker...");
-        let stream = TcpStream::connect(producer_addr).await.expect("Producer client failed to connect");
-        
+        let stream = TcpStream::connect(producer_addr)
+            .await
+            .expect("Producer client failed to connect");
+
         // 1. Handshake as Producer (0x01)
         let handshake = vec![0x01];
         let _ = write_all(&stream, handshake).await.unwrap();
@@ -348,59 +371,62 @@ async fn run_demo() -> io::Result<()> {
 
         for (i, msg) in messages.into_iter().enumerate() {
             tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-            
+
             let payload = msg.as_bytes().to_vec();
             let msg_len = payload.len() as u32;
-            
+
             let mut frame = Vec::with_capacity(4 + payload.len());
             frame.extend_from_slice(&msg_len.to_be_bytes());
             frame.extend(payload);
 
             println!("[Producer Client] Sending message {}: '{}'", i + 1, msg);
             let _ = write_all(&stream, frame).await.unwrap();
-            
+
             // Read the ACK back (8-byte offset)
             let ack_buf = vec![0u8; 8];
             let ack_buf = read_exact(&stream, ack_buf, 8).await.unwrap();
             let ack_offset = u64::from_be_bytes([
-                ack_buf[0], ack_buf[1], ack_buf[2], ack_buf[3],
-                ack_buf[4], ack_buf[5], ack_buf[6], ack_buf[7],
+                ack_buf[0], ack_buf[1], ack_buf[2], ack_buf[3], ack_buf[4], ack_buf[5], ack_buf[6],
+                ack_buf[7],
             ]);
-            println!("[Producer Client] Received ACK: Message written at physical offset {}", ack_offset);
+            println!(
+                "[Producer Client] Received ACK: Message written at physical offset {}",
+                ack_offset
+            );
         }
-        
+
         println!("[Producer Client] Finished producing. Closing connection.");
     });
 
     // Let the demo run for a bit, then exit
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     println!("[Demo] Completed successfully! Shutting down...");
-    
+
     // Cleanup demo WAL
     let _ = std::fs::remove_file(log_path);
-    
+
     Ok(())
 }
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    
+
     if args.len() > 1 && args[1] == "server" {
         // Mode 1: Dedicated Broker Server
         println!("============================================================");
         println!("              RINGLOG BROKER DEDICATED SERVER               ");
         println!("============================================================");
         println!("[Server] Starting single-threaded io_uring broker on 127.0.0.1:12000...\n");
-        
+
         tokio_uring::start(async {
             let log_path = "commit.log";
             let log = Arc::new(Mutex::new(UringCommitLog::open(log_path).await.unwrap()));
             let (tx, rx) = watch::channel(log.lock().await.write_offset);
-            
+
             let addr: std::net::SocketAddr = "127.0.0.1:12000".parse().unwrap();
             let listener = TcpListener::bind(addr).unwrap();
             println!("[Server] Listening for TCP connections on {}...", addr);
-            
+
             loop {
                 let (stream, _peer_addr) = listener.accept().await.unwrap();
                 let log_clone = Arc::clone(&log);
@@ -419,41 +445,44 @@ fn main() -> io::Result<()> {
         println!("                  RINGLOG TCP PRODUCER                      ");
         println!("============================================================");
         println!("[Producer] Connecting to broker at 127.0.0.1:12000...\n");
-        
+
         tokio_uring::start(async {
             let stream = TcpStream::connect("127.0.0.1:12000".parse().unwrap())
                 .await
                 .expect("Failed to connect to broker server. Is it running?");
-            
+
             // Send Producer handshake
             let _ = write_all(&stream, vec![0x01]).await.unwrap();
             println!("[Producer] Connected. Type messages below and press ENTER to publish.\n");
-            
+
             let mut stdin_lines = tokio::io::BufReader::new(tokio::io::stdin()).lines();
             while let Ok(Some(line)) = stdin_lines.next_line().await {
                 let line_trimmed = line.trim();
                 if line_trimmed.is_empty() {
                     continue;
                 }
-                
+
                 let payload = line_trimmed.as_bytes().to_vec();
                 let msg_len = payload.len() as u32;
-                
+
                 let mut frame = Vec::with_capacity(4 + payload.len());
                 frame.extend_from_slice(&msg_len.to_be_bytes());
                 frame.extend(payload);
-                
+
                 // Send record to broker
                 let _ = write_all(&stream, frame).await.unwrap();
-                
+
                 // Read 8-byte assigned physical offset ACK
                 let ack_buf = vec![0u8; 8];
                 let ack_buf = read_exact(&stream, ack_buf, 8).await.unwrap();
                 let ack_offset = u64::from_be_bytes([
-                    ack_buf[0], ack_buf[1], ack_buf[2], ack_buf[3],
-                    ack_buf[4], ack_buf[5], ack_buf[6], ack_buf[7],
+                    ack_buf[0], ack_buf[1], ack_buf[2], ack_buf[3], ack_buf[4], ack_buf[5],
+                    ack_buf[6], ack_buf[7],
                 ]);
-                println!("\x1b[34m[ACK] Message written at WAL offset {}\x1b[0m", ack_offset);
+                println!(
+                    "\x1b[34m[ACK] Message written at WAL offset {}\x1b[0m",
+                    ack_offset
+                );
             }
         });
     } else if args.len() > 1 && args[1] == "consumer" {
@@ -463,24 +492,29 @@ fn main() -> io::Result<()> {
         } else {
             0
         };
-        
+
         println!("============================================================");
         println!("                  RINGLOG TCP CONSUMER                      ");
         println!("============================================================");
-        println!("[Consumer] Connecting to broker at 127.0.0.1:12000 starting at offset {}...\n", start_offset);
-        
+        println!(
+            "[Consumer] Connecting to broker at 127.0.0.1:12000 starting at offset {}...\n",
+            start_offset
+        );
+
         tokio_uring::start(async move {
             let stream = TcpStream::connect("127.0.0.1:12000".parse().unwrap())
                 .await
                 .expect("Failed to connect to broker server. Is it running?");
-            
+
             // Send Consumer handshake
             let _ = write_all(&stream, vec![0x02]).await.unwrap();
-            
+
             // Send 8-byte starting offset
-            let _ = write_all(&stream, start_offset.to_be_bytes().to_vec()).await.unwrap();
+            let _ = write_all(&stream, start_offset.to_be_bytes().to_vec())
+                .await
+                .unwrap();
             println!("[Consumer] Connected. Streaming messages from the broker in real-time:\n");
-            
+
             loop {
                 // Read 4-byte length prefix
                 let len_buf = vec![0u8; 4];
@@ -495,8 +529,9 @@ fn main() -> io::Result<()> {
                         break;
                     }
                 };
-                let msg_len = u32::from_be_bytes([len_buf[0], len_buf[1], len_buf[2], len_buf[3]]) as usize;
-                
+                let msg_len =
+                    u32::from_be_bytes([len_buf[0], len_buf[1], len_buf[2], len_buf[3]]) as usize;
+
                 // Read msg_len payload bytes
                 let payload_buf = vec![0u8; msg_len];
                 let payload = read_exact(&stream, payload_buf, msg_len).await.unwrap();
