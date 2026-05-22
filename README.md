@@ -43,7 +43,13 @@ Once handshaking as a Consumer, the client requests a stream of records starting
 
 ## 🚀 How to Run
 
-The single binary supports four distinct operational modes via command-line arguments:
+The single binary supports four distinct operational modes via command-line arguments.
+
+> [!TIP]
+> Since this is a high-performance infrastructure project, always compile with the `--release` flag in production environments to enable maximum compiler optimizations for `io_uring` memory layouts:
+> ```bash
+> cargo run --release -- [subcommand]
+> ```
 
 ### 1. Run the Real-Time Simulation Demo (Recommended)
 This runs a fully self-contained simulation of the broker, producer, and consumer all running concurrently inside the same thread-local event loop:
