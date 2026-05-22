@@ -1,6 +1,6 @@
 use std::io;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::{watch, Mutex};
 use tokio_uring::buf::IoBuf;
@@ -135,7 +135,7 @@ async fn write_all(stream: &TcpStream, mut buf: Vec<u8>) -> io::Result<Vec<u8>> 
 /// Dynamic Connection Handler utilizing fully asynchronous io_uring calls.
 async fn handle_connection(
     stream: TcpStream,
-    log: Arc<Mutex<UringCommitLog>>,
+    log: Rc<Mutex<UringCommitLog>>,
     waker_tx: watch::Sender<u64>,
     waker_rx: watch::Receiver<u64>,
 ) -> io::Result<()> {
@@ -259,7 +259,7 @@ async fn run_demo() -> io::Result<()> {
     let _ = std::fs::remove_file(log_path); // start fresh
 
     println!("[Demo] Initializing UringCommitLog at '{}'...", log_path);
-    let log = Arc::new(Mutex::new(UringCommitLog::open(log_path).await?));
+    let log = Rc::new(Mutex::new(UringCommitLog::open(log_path).await?));
 
     // Setup the notify watch channel with the initial file size (0)
     let (tx, rx) = watch::channel(0u64);
@@ -272,14 +272,14 @@ async fn run_demo() -> io::Result<()> {
         addr
     );
 
-    let server_log = Arc::clone(&log);
+    let server_log = Rc::clone(&log);
     let server_tx = tx.clone();
     let server_rx = rx.clone();
     tokio_uring::spawn(async move {
         loop {
             match listener.accept().await {
                 Ok((stream, _peer_addr)) => {
-                    let log_clone = Arc::clone(&server_log);
+                    let log_clone = Rc::clone(&server_log);
                     let tx_clone = server_tx.clone();
                     let rx_clone = server_rx.clone();
                     tokio_uring::spawn(async move {
@@ -420,7 +420,7 @@ fn main() -> io::Result<()> {
 
         tokio_uring::start(async {
             let log_path = "commit.log";
-            let log = Arc::new(Mutex::new(UringCommitLog::open(log_path).await.unwrap()));
+            let log = Rc::new(Mutex::new(UringCommitLog::open(log_path).await.unwrap()));
             let (tx, rx) = watch::channel(log.lock().await.write_offset);
 
             let addr: std::net::SocketAddr = "127.0.0.1:12000".parse().unwrap();
@@ -429,7 +429,7 @@ fn main() -> io::Result<()> {
 
             loop {
                 let (stream, _peer_addr) = listener.accept().await.unwrap();
-                let log_clone = Arc::clone(&log);
+                let log_clone = Rc::clone(&log);
                 let tx_clone = tx.clone();
                 let rx_clone = rx.clone();
                 tokio_uring::spawn(async move {
